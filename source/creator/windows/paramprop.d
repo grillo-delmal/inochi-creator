@@ -20,6 +20,7 @@ class ParamPropWindow : Window {
 private:
     Parameter param;
     string paramName;
+    string[2] paramAutoTrackingTag;
     vec2 min;
     vec2 max;
 
@@ -31,7 +32,7 @@ private:
 protected:
     override
     void onBeginUpdate() {
-        igSetNextWindowSize(ImVec2(384, 192), ImGuiCond.Appearing);
+        igSetNextWindowSize(ImVec2(384, 242), ImGuiCond.Appearing);
         igSetNextWindowSizeConstraints(ImVec2(384, 192), ImVec2(float.max, float.max));
         super.onBeginUpdate();
     }
@@ -89,6 +90,24 @@ protected:
                         igUnindent();
                     }
                 igUnindent();
+
+                incText(_("Auto Tracking Tag"));
+                igIndent();
+                    if (param.isVec2) incText("X");
+                    if (param.isVec2) igIndent();
+                        incInputText("AutoTrackingTagX", paramAutoTrackingTag[0]);
+                    if (param.isVec2) igUnindent();
+
+                    if (param.isVec2) {
+
+                        incText("Y");
+                        igIndent();
+                            incInputText("AutoTrackingTagY", paramAutoTrackingTag[1]);
+                        igUnindent();
+                    }
+
+                igUnindent();
+
             }
             igEndChild();
 
@@ -116,6 +135,7 @@ protected:
     override
     void onClose() {
         param.name = paramName;
+        param.autoTrackingTag = paramAutoTrackingTag;
         param.makeIndexable();
 
         param.min = min;
@@ -131,6 +151,7 @@ public:
         this.param = param;
 
         paramName = param.name.dup;
+        paramAutoTrackingTag = param.autoTrackingTag.dup;
         min.vector = param.min.vector.dup;
         max.vector = param.max.vector.dup;
 
