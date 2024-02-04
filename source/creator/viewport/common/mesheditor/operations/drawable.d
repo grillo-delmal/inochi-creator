@@ -599,6 +599,16 @@ public:
         return false;
     }
 
+    ulong[] getInCircle(vec2 center, float rad){
+        ulong[] matching;
+        foreach(idx, vertex; vertices) {
+            if(abs(vertex.distance(center)) < (rad))
+                matching ~= idx;
+        }
+
+        return matching;        
+    }
+
     override
     ulong[] getInRect(vec2 min, vec2 max) {
         if (min.x > max.x) swap(min.x, max.x);

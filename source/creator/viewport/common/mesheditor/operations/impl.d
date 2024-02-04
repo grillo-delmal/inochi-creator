@@ -34,6 +34,7 @@ public:
         tools[VertexToolMode.Connect] = new ConnectTool;
         tools[VertexToolMode.PathDeform] = new PathDeformTool;
         tools[VertexToolMode.Grid] = new GridTool;
+        tools[VertexToolMode.VertexBrush] = new VertexBrushTool;
     }
 
     override
@@ -113,6 +114,12 @@ public:
         case VertexToolMode.Grid:
             import std.stdio;
             setToolMode(VertexToolMode.Grid);
+            setPath(null);
+            deforming = false;
+            refreshMesh();
+            break;
+        case VertexToolMode.VertexBrush:
+            setToolMode(VertexToolMode.VertexBrush);
             setPath(null);
             deforming = false;
             refreshMesh();

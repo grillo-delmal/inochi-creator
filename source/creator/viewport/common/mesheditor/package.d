@@ -219,6 +219,15 @@ public:
                     incTooltip(_("Grid Vertex Tool"));
                 }
 
+                if (deformOnly) {
+                    if (incButtonColored("", ImVec2(0, 0), getToolMode() == VertexToolMode.VertexBrush ? ImVec4.init : ImVec4(0.6, 0.6, 0.6, 1))) {
+                        setToolMode(VertexToolMode.VertexBrush);
+                        foreach (e; editors)
+                            e.viewportTools(VertexToolMode.VertexBrush);
+                    }
+                    incTooltip(_("Vertex Brush"));
+                }
+
             igPopStyleVar(2);
         igSetWindowFontScale(1);
     }
