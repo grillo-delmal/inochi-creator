@@ -840,7 +840,7 @@ private {
         }
 
         // HANDLE ZOOM
-        if (io.MouseWheel != 0) {
+        if (io.MouseWheel != 0 && ((igGetIO().KeyMods & (ImGuiModFlags.Ctrl | ImGuiModFlags.Alt)) == 0)) {
             incViewportZoom += (io.MouseWheel/50)*incViewportZoom*uiScale;
             incViewportZoom = clamp(incViewportZoom, incVIEWPORT_ZOOM_MIN, incVIEWPORT_ZOOM_MAX);
             camera.scale = vec2(incViewportZoom);

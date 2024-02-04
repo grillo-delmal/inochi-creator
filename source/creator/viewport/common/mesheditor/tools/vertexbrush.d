@@ -33,7 +33,7 @@ class VertexBrushTool : Tool, Draggable {
     - mouse_pos
     - last_pos
     */
-    float _innerRad = 50;
+    float _innerPer = .5;
     float _outerRad = 100;
 
     vec2 _lastMousePos;
@@ -72,7 +72,7 @@ class VertexBrushTool : Tool, Draggable {
             foreach (v; movable) {
                 auto dist = inmath.math.abs(v.position.distance(_lastMousePos));
 
-                auto mag = min((_outerRad - dist) / (_outerRad - _innerRad), 1.0f);
+                auto mag = min((_outerRad - dist) / (_outerRad - _outerRad*_innerPer), 1.0f);
                 if(mag > 0){
                     //writefln(
                     //    "* moving: %f %f -> %f %f * %f", 
@@ -125,6 +125,34 @@ class VertexBrushTool : Tool, Draggable {
             onDragEnd(impl.mousePos, impl);
         }
 
+        if ((igGetIO().KeyMods & ImGuiModFlags.Alt) == ImGuiModFlags.Alt) {    
+            float delta = (igGetIO().MouseWheel);
+            if(delta != 0){
+                _innerPer = min(max(_innerPer + delta*.1, 0), 1);
+                //writefln("Per: %f %f",_innerPer, delta);
+            }
+        } else if ((igGetIO().KeyMods & ImGuiModFlags.Ctrl) == ImGuiModFlags.Ctrl) {
+            float delta = (igGetIO().MouseWheel);
+            if(delta < 0){
+                if (_outerRad < 100){
+                    _outerRad = max(_outerRad - 10, 10);
+                }
+                else{
+                    _outerRad = _outerRad - 20;
+                }
+                //writefln("Siz: %f",_outerRad , delta);
+            }
+            else if (delta > 0){
+                if (_outerRad < 100){
+                    _outerRad = min(_outerRad + 10, 100);
+                }
+                else{
+                    _outerRad = _outerRad + 20;
+                }
+                //writefln("Siz: %f",_outerRad , delta);
+            }
+        }
+
         if (_isDragging) {
             return VertexBrushActionID.Dragging;
         }
@@ -148,6 +176,10 @@ class VertexBrushTool : Tool, Draggable {
     }
 
     override bool update(ImGuiIO* io, IncMeshEditorOne impl, int action, out bool changed) {
+        incStatusTooltip(_("Paint"), _("Left Mouse"));
+        incStatusTooltip(_("Brush Size"), _("Ctrl+Wheel"));
+        incStatusTooltip(_("Brush Strenght"), _("Alt+Wheel"));
+
         // Dragging
         if (action == VertexBrushActionID.StartDrag) {
             onDragStart(impl.mousePos, impl);
@@ -174,7 +206,7 @@ class VertexBrushTool : Tool, Draggable {
 
         vec3[] lines;
         lines ~= incCreateCircleBuffer(
-            impl.mousePos, vec2(_innerRad, _innerRad), 32);
+            impl.mousePos, vec2(_outerRad*_innerPer, _outerRad*_innerPer), 32);
         lines ~= incCreateCircleBuffer(
             impl.mousePos, vec2(_outerRad, _outerRad), 32);
 
