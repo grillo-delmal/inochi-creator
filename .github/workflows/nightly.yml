@@ -14,11 +14,115 @@ permissions:
   contents: write
 
 jobs:
+  collect-sources:
+    runs-on: ubuntu-latest
+    outputs:
+      same-sources: ${{ steps.cache.outputs.cache-hit }}
+
+    steps:
+    - name: Install dub and ldc
+      uses: dlang-community/setup-dlang@v2
+      with:
+        compiler: ldc-latest
+        dub: latest
+
+    - uses: actions/checkout@v4
+      with:
+        ref: 'ci_cd'
+
+    - name: Download project maintained dependencies
+      run: |
+        mkdir -p ./deps
+        pushd deps
+
+        # Make the archive weight less
+        GIT_OPTIONS="--depth 1 --recurse-submodules --shallow-submodules" 
+
+        # Fixme Use v0_8 branch until v9 is usable
+        git clone $GIT_OPTIONS https://github.com/Inochi2D/inochi2d.git -b v0_8
+        git clone $GIT_OPTIONS https://github.com/Inochi2D/facetrack-d.git
+        git clone $GIT_OPTIONS https://github.com/Inochi2D/vmc-d.git
+        # Lock inmath to v1.0.6 for now ;9
+        git clone $GIT_OPTIONS https://github.com/Inochi2D/inmath.git -b v1.0.6
+        git clone              https://github.com/Inochi2D/psd-d.git
+        git clone $GIT_OPTIONS https://github.com/Inochi2D/fghj.git
+        git clone              https://github.com/Inochi2D/i2d-imgui.git --recurse-submodules
+        git clone $GIT_OPTIONS https://github.com/Inochi2D/i2d-opengl.git
+        git clone $GIT_OPTIONS https://github.com/Inochi2D/dportals.git
+        git clone              https://github.com/Inochi2D/kra-d.git
+        git clone $GIT_OPTIONS https://github.com/Inochi2D/gitver.git
+        git clone $GIT_OPTIONS https://github.com/dcarp/semver.git
+        popd
+
+    - name: Add dependencies to dub local cache
+      run: |
+        set -x
+        # Add dependencies to user environment
+        mkdir -p ./.dub/packages
+        for d in ./deps/*/ ; do
+            dub add-local $d
+        done
+
+        # Move local-packages.json to local environment
+        #mv ~/.dub/packages/local-packages.json ./.dub/packages/
+
+        #for d in ./deps/*/ ; do
+        #    n=$(basename $d)
+        #    mv ./.dub/packages/local-packages.json ./.dub/packages/local-packages.json.bak 
+        #    jq --arg n $n --arg d $d '[ .[] | if .name | test($n) then .path = $d else . end ]' \
+        #        ./.dub/packages/local-packages.json.bak > \
+        #        ./.dub/packages/local-packages.json 
+        #    rm -f ./.dub/packages/local-packages.json.bak
+        #done
+        dub --version
+        pwd
+        ls -alh
+        dub list
+
+    - name: Download external dependencies
+      run: |
+        # Download dependencies and generate the dub.selections.json file in the process
+        dub build  \
+            --compiler=ldc2 --build=release --config=linux-full \
+            --vverbose \
+            --cache=local
+        
+        dub list | tail -n+2 | head -n-2 | sort > current-versions
+
+    - name: Check if it's different from last build
+      uses: actions/cache@v4
+      id: cache
+      with:
+        path: nightly-versions
+        key: nightly-deps-${{ hashFiles('./current-versions') }}
+        lookup-only: true
+
+    - name: Download external dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        mv current-versions nightly-versions
+
+    - name: Upload source
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: inochi-creator-source
+        path: ./*
+        retention-days: 1
+
   build-resources:
     runs-on: ubuntu-20.04
     
+    needs: [collect-sources]
+    if: needs.collect-sources.outputs.same-sources != 'true'
+
     steps:
-    - uses: actions/checkout@v3
+    - name: Download source
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: inochi-creator-source
+        path: '.'
     
     - name: 'Install dependencies'
       run: |
@@ -46,9 +150,19 @@ jobs:
   linux-zip:
     runs-on: ubuntu-20.04
 
+    needs: [collect-sources]
+    if: needs.collect-sources.outputs.same-sources != 'true'
+
     steps:
-    - uses: actions/checkout@v3
-    - uses: dlang-community/setup-dlang@4c99aa991ce7d19dd3064de0a4f2f6b2f152e2d7
+    - name: Download source
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: inochi-creator-source
+        path: '.'
+
+    - name: Install dub and ldc
+      uses: dlang-community/setup-dlang@v2
       with:
         compiler: ldc-latest
     
@@ -61,22 +175,13 @@ jobs:
         sudo chmod +x ./gentl.sh
         ./gentl.sh
       
-    - name: "Clone dependencies & set versions"
-      run: |
-        git clone https://github.com/Inochi2D/i2d-imgui.git --recurse-submodules
-        git clone -b v0_8 https://github.com/Inochi2D/inochi2d.git
-        git clone https://github.com/Inochi2D/dcv-i2d
-        dub add-local i2d-imgui/ "0.8.0"
-        dub add-local inochi2d/ "0.8.0"
-        dub add-local dcv-i2d/ "0.3.0"
-
     - name: 'Build Inochi Creator'
       run: |
         # Build metadata (like version information and icons)
-        dub build --config=meta
+        dub build --skip-registry=all --cache=local --config=meta
 
         # Build the project, with its main file included, without unittests
-        dub build --compiler=ldc2 --config=linux-nightly --debug=InExperimental
+        dub build --skip-registry=all --cache=local --compiler=ldc2 --config=linux-nightly --debug=InExperimental
           
     - name: Archive Zip
       uses: thedoctor0/zip-release@main
@@ -100,26 +205,24 @@ jobs:
     needs: build-resources
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: dlang-community/setup-dlang@4c99aa991ce7d19dd3064de0a4f2f6b2f152e2d7
+    - name: Download source
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: inochi-creator-source
+        path: '.'
+
+    - name: Install dub and ldc
+      uses: dlang-community/setup-dlang@v2
       with:
         compiler: ldc-latest
-        
+
     - name: Download translations
       uses: actions/download-artifact@v3
       with:
         name: translations
         path: out/i18n/
       
-    - name: "Clone dependencies & set versions"
-      run: |
-        git clone https://github.com/Inochi2D/i2d-imgui.git --recurse-submodules
-        git clone -b v0_8 https://github.com/Inochi2D/inochi2d.git
-        git clone https://github.com/Inochi2D/dcv-i2d
-        dub add-local i2d-imgui/ "0.8.0"
-        dub add-local inochi2d/ "0.8.0"
-        dub add-local dcv-i2d/ "0.3.0"
-
     - name: 'Build Inochi Creator'
       run: |
         function Invoke-VSDevEnvironment {
@@ -136,10 +239,10 @@ jobs:
         Remove-Item 'C:/Strawberry' -Recurse
 
         # Build metadata (like version information and icons)
-        dub build --config=meta
+        dub build --skip-registry=all --cache=local --config=meta
 
         # Build the project, with its main file included, without unittests
-        dub build --compiler=ldc2 --config=win32-nightly --debug=InExperimental
+        dub build --skip-registry=all --cache=local --compiler=ldc2 --config=win32-nightly --debug=InExperimental
 
     - name: Archive Zip
       uses: thedoctor0/zip-release@main
@@ -178,12 +281,22 @@ jobs:
   macOS-dmg:
     runs-on: macos-14
 
+    needs: [collect-sources]
+    if: needs.collect-sources.outputs.same-sources != 'true'
+
     steps:
-    - uses: actions/checkout@v3
-    - uses: dlang-community/setup-dlang@v1.4.0
+    - name: Download source
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: inochi-creator-source
+        path: '.'
+
+    - name: Install dub and ldc
+      uses: dlang-community/setup-dlang@v2
       with:
         compiler: ldc-latest
-  
+    
     - name: "Prepare for DMG packing"
       continue-on-error: true
       run: |
@@ -216,31 +329,22 @@ jobs:
         sudo chmod +x ./gentl.sh
         ./gentl.sh
       
-    - name: "Clone dependencies & set versions"
-      run: |
-        git clone https://github.com/Inochi2D/i2d-imgui.git --recurse-submodules
-        git clone -b v0_8 https://github.com/Inochi2D/inochi2d.git
-        git clone https://github.com/Inochi2D/dcv-i2d
-        dub add-local i2d-imgui/ "0.8.0"
-        dub add-local inochi2d/ "0.8.0"
-        dub add-local dcv-i2d/ "0.3.0"
-
     - name: 'Build Inochi Creator'
       env:
         DFLAGS: "-g -force-dwarf-frame-section=false"
       run: |
 
         # Build metadata (like version information and icons)
-        dub build --config=meta
+        dub build --skip-registry=all --cache=local --config=meta
 
         # First build ARM64 version...
         echo "Building arm64 binary..."
-        dub build --config=osx-nightly --arch=arm64-apple-macos
+        dub build --skip-registry=all --cache=local --config=osx-nightly --arch=arm64-apple-macos
         mv "out/Inochi Creator.app/Contents/MacOS/inochi-creator" "out/Inochi Creator.app/Contents/MacOS/inochi-creator-arm64"
 
         # Then the X86_64 version...
         echo "Building x86_64 binary..."
-        dub build --config=osx-nightly --arch=x86_64-apple-macos
+        dub build --skip-registry=all --cache=local --config=osx-nightly --arch=x86_64-apple-macos
         mv "out/Inochi Creator.app/Contents/MacOS/inochi-creator" "out/Inochi Creator.app/Contents/MacOS/inochi-creator-x86_64"
 
         # Glue them together with lipo
@@ -269,6 +373,10 @@ jobs:
 
   build-flatpak:
     runs-on: ubuntu-latest
+
+    needs: [collect-sources]
+    if: needs.collect-sources.outputs.same-sources != 'true'
+
     container:
       image: bilelmoussaoui/flatpak-github-actions:freedesktop-22.08
       options: --privileged
@@ -280,9 +388,12 @@ jobs:
       FLATPAK_BUILD_REPO: build-repo
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Download source
+      continue-on-error: true
+      uses: actions/download-artifact@v4
       with:
-        submodules: true
+        name: inochi-creator-source
+        path: '.'
 
     - name: Dump canonical manifest
       run: |
@@ -329,8 +440,6 @@ jobs:
       FLATPAK_BUILD_REPO: build-repo
 
     steps:
-    - uses: actions/checkout@v2
-
     - name: Install flatpak
       run: |
         set -e
